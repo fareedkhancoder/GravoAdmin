@@ -1,214 +1,229 @@
 package com.gravo.gravoadmin;
 
-import android.content.Intent;
+import android.app.ProgressDialog;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
-import android.view.View;
+import android.text.TextUtils;
 import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.Spinner;
-import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
-import com.google.firebase.storage.UploadTask;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 public class AddProductActivity extends AppCompatActivity {
 
-    private static final int PICK_IMAGE_REQUEST = 1;
+    private ProductImageAdapter imageAdapter;
+    private List<Uri> imageUris;
 
-    // UI Elements
-    private ImageView productImageView;
-    private Button selectImageButton;
-    private Spinner categorySpinner;
-    private Spinner fieldSpinner;
-    private EditText valueEditText;
-    private Button addFieldButton;
-    private TextView addedFieldsTextView;
-    private Button saveProductButton;
+    private final ActivityResultLauncher<String> imagePickerLauncher =
+            registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
+                if (uri != null) {
+                    imageUris.add(uri);
+                    imageAdapter.notifyItemInserted(imageUris.size() - 1);
+                }
+            });
+
+    // UI Components
+    private TextInputEditText inputProductName, inputBrand, inputDescription, inputTags;
+    private TextInputEditText inputSellingPrice, inputDiscount, inputCostPrice, inputStockQuantity;
+    private AutoCompleteTextView inputCategory;
+    private MaterialSwitch switchIsNew;
+    private Button buttonPublish;
+    private ProgressDialog progressDialog;
 
     // Firebase
-    private FirebaseFirestore db;
+    private FirebaseFirestore firestore;
     private FirebaseStorage storage;
-    private StorageReference storageReference;
-
-    // Data holders
-    private Uri imageUri;
-    private final Map<String, Object> productData = new HashMap<>();
-    private final List<String> categories = new ArrayList<>();
-    private ArrayAdapter<String> categoryAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // EdgeToEdge.enable(this); // Consider removing if it causes layout issues
         setContentView(R.layout.activity_add_product);
 
+        // Setup Toolbar
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.setNavigationOnClickListener(v -> onBackPressed());
+
         // Initialize Firebase
-        db = FirebaseFirestore.getInstance();
+        firestore = FirebaseFirestore.getInstance();
         storage = FirebaseStorage.getInstance();
-        storageReference = storage.getReference();
 
-        // Initialize UI
-        initViews();
+        // Initialize UI components
+        initializeViews();
 
-        // Setup Spinners
-        setupFieldSpinner();
-        setupCategorySpinner();
-        fetchCategories();
+        // Setup RecyclerView logic
+        setupRecyclerView();
 
-        // Set Click Listeners
-        selectImageButton.setOnClickListener(v -> openFileChooser());
-        addFieldButton.setOnClickListener(v -> addField());
-        saveProductButton.setOnClickListener(v -> saveProduct());
+        // Set listener for the publish button
+        buttonPublish.setOnClickListener(v -> publishProduct());
     }
 
-    private void initViews() {
-        productImageView = findViewById(R.id.productImageView);
-        selectImageButton = findViewById(R.id.selectImageButton);
-        categorySpinner = findViewById(R.id.categorySpinner);
-        fieldSpinner = findViewById(R.id.fieldSpinner);
-        valueEditText = findViewById(R.id.valueEditText);
-        addFieldButton = findViewById(R.id.addFieldButton);
-        addedFieldsTextView = findViewById(R.id.addedFieldsTextView);
-        saveProductButton = findViewById(R.id.saveProductButton);
+    private void initializeViews() {
+        // Find all views by their ID
+        inputProductName = findViewById(R.id.input_product_name);
+        inputBrand = findViewById(R.id.input_brand);
+        inputDescription = findViewById(R.id.input_description);
+        inputCategory = findViewById(R.id.input_category);
+        inputTags = findViewById(R.id.input_tags);
+        inputSellingPrice = findViewById(R.id.input_selling_price);
+        inputDiscount = findViewById(R.id.input_discount);
+        inputCostPrice = findViewById(R.id.input_cost_price);
+        inputStockQuantity = findViewById(R.id.input_stock_quantity);
+        switchIsNew = findViewById(R.id.switch_is_new);
+        buttonPublish = findViewById(R.id.button_publish);
+
+        // Setup category dropdown (example categories)
+        String[] categories = new String[] {"Electronics", "Apparel", "Home & Kitchen", "Books"};
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, categories);
+        inputCategory.setAdapter(adapter);
+
+        // Progress Dialog for loading states
+        progressDialog = new ProgressDialog(this);
+        progressDialog.setTitle("Publishing Product");
+        progressDialog.setMessage("Please wait...");
+        progressDialog.setCancelable(false);
     }
 
-    private void setupFieldSpinner() {
-        String[] fields = {"Name", "Brand", "Description", "Tags", "price", "Selling Price", "Is New (true/false)", "MFG Date", "EXP Date"};
-        ArrayAdapter<String> fieldAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, fields);
-        fieldAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        fieldSpinner.setAdapter(fieldAdapter);
-    }
+    // --- THIS IS THE MISSING METHOD ---
+    private void setupRecyclerView() {
+        // RecyclerView and Image Picker
+        RecyclerView recyclerViewImages = findViewById(R.id.recycler_view_images);
+        imageUris = new ArrayList<>();
 
-    private void setupCategorySpinner() {
-        categoryAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, categories);
-        categoryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        categorySpinner.setAdapter(categoryAdapter);
-    }
-
-    private void fetchCategories() {
-        db.collection("categories")
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        categories.clear();
-                        for (QueryDocumentSnapshot document : task.getResult()) {
-                            // Assuming each category document has a "name" field
-                            String categoryName = document.getString("name");
-                            if (categoryName != null) {
-                                categories.add(categoryName);
-                            }
-                        }
-                        categoryAdapter.notifyDataSetChanged();
-                    } else {
-                        Toast.makeText(AddProductActivity.this, "Error fetching categories", Toast.LENGTH_SHORT).show();
-                    }
-                });
-    }
-
-    private void openFileChooser() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        startActivityForResult(intent, PICK_IMAGE_REQUEST);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            imageUri = data.getData();
-            productImageView.setImageURI(imageUri);
-        }
-    }
-
-    private void addField() {
-        String field = fieldSpinner.getSelectedItem().toString();
-        String value = valueEditText.getText().toString().trim();
-
-        if (value.isEmpty()) {
-            Toast.makeText(this, "Value cannot be empty", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Add to map, converting to number/boolean if applicable
-        try {
-            if (field.toLowerCase().contains("price")) {
-                productData.put(field.toLowerCase().replace(" ", "_"), Double.parseDouble(value));
-            } else if (field.toLowerCase().contains("is new")) {
-                productData.put("is_new", Boolean.parseBoolean(value));
-            } else {
-                productData.put(field.toLowerCase().replace(" ", "_"), value);
+        ProductImageAdapter.OnImageInteractionListener listener = new ProductImageAdapter.OnImageInteractionListener() {
+            @Override
+            public void onAddImageClick() {
+                imagePickerLauncher.launch("image/*");
             }
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Please enter a valid number for price fields.", Toast.LENGTH_SHORT).show();
+
+            @Override
+            public void onRemoveImageClick(int position) {
+                imageUris.remove(position);
+                imageAdapter.notifyItemRemoved(position);
+                imageAdapter.notifyItemRangeChanged(position, imageUris.size());
+            }
+        };
+
+        imageAdapter = new ProductImageAdapter(imageUris, listener);
+
+        recyclerViewImages.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        recyclerViewImages.setAdapter(imageAdapter);
+
+        // Add Drag and Drop functionality
+        ItemTouchHelper.Callback callback = new ImageItemTouchHelperCallback(imageAdapter, imageUris);
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(callback);
+        itemTouchHelper.attachToRecyclerView(recyclerViewImages);
+    }
+
+    private void publishProduct() {
+        // Input Validation
+        String name = inputProductName.getText().toString().trim();
+        String priceStr = inputSellingPrice.getText().toString().trim();
+        String stockStr = inputStockQuantity.getText().toString().trim();
+
+        if (imageUris.isEmpty() || TextUtils.isEmpty(name) || TextUtils.isEmpty(priceStr) || TextUtils.isEmpty(stockStr)) {
+            Toast.makeText(this, "Product Images, Name, Price, and Stock are required.", Toast.LENGTH_SHORT).show();
             return;
         }
 
+        progressDialog.show();
 
-        // Update UI to show added field
-        addedFieldsTextView.append(field + ": " + value + "\n");
-        valueEditText.setText("");
-    }
+        // Create Product Object from UI data
+        Product product = new Product();
+        product.setName(name);
+        product.setBrand(inputBrand.getText().toString().trim());
+        product.setDescription(inputDescription.getText().toString().trim());
+        product.setPrice(Double.parseDouble(priceStr));
+        product.setStockQuantity(Long.parseLong(stockStr));
+        product.setIs_new(switchIsNew.isChecked());
+        product.setCategoryId(inputCategory.getText().toString());
+        product.setSellerId("your_current_seller_id"); // Replace with actual seller ID
 
-    private void saveProduct() {
-        if (imageUri != null) {
-            uploadImageAndSaveProduct();
-        } else {
-            // Save product without an image
-            saveProductData(null);
-        }
-    }
-
-    private void uploadImageAndSaveProduct() {
-        final StorageReference fileReference = storageReference.child("product_images/" + UUID.randomUUID().toString());
-
-        fileReference.putFile(imageUri)
-                .addOnSuccessListener(taskSnapshot -> fileReference.getDownloadUrl().addOnSuccessListener(uri -> {
-                    String imageUrl = uri.toString();
-                    saveProductData(imageUrl);
-                }))
-                .addOnFailureListener(e -> Toast.makeText(AddProductActivity.this, "Image upload failed: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-    }
-
-    private void saveProductData(@Nullable String imageUrl) {
-        if (categorySpinner.getSelectedItem() == null) {
-            Toast.makeText(this, "Please select a category", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String selectedCategory = categorySpinner.getSelectedItem().toString();
-        productData.put("categoryId", selectedCategory);
-
-        if (imageUrl != null) {
-            // For extensibility, we save images as a list
-            List<String> imageUrls = new ArrayList<>();
-            imageUrls.add(imageUrl);
-            productData.put("imageUrls", imageUrls); // Changed "images" to "imageUrls"
+        // Handle potentially empty fields for numbers
+        String costPriceStr = inputCostPrice.getText().toString().trim();
+        if (!TextUtils.isEmpty(costPriceStr)) {
+            product.setCostPrice(Double.parseDouble(costPriceStr));
         }
 
-        db.collection("products")
-                .add(productData)
-                .addOnSuccessListener(documentReference -> {
-                    Toast.makeText(AddProductActivity.this, "Product saved successfully!", Toast.LENGTH_SHORT).show();
-                    finish(); // Go back to the previous activity
-                })
-                .addOnFailureListener(e -> Toast.makeText(AddProductActivity.this, "Error saving product: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+        String discountStr = inputDiscount.getText().toString().trim();
+        if (!TextUtils.isEmpty(discountStr)) {
+            product.setDiscountPercent(Long.parseLong(discountStr));
+        }
+
+        // Process tags
+        String tagsString = inputTags.getText().toString().toLowerCase().trim();
+        if (!tagsString.isEmpty()) {
+            List<String> tags = Arrays.asList(tagsString.split("\\s*,\\s*"));
+            product.setTags_lowercase(tags);
+        }
+
+        // Upload Images and Save Product Data
+        uploadImagesAndSaveProduct(product);
+    }
+
+    private void uploadImagesAndSaveProduct(Product product) {
+        List<String> downloadUrls = new ArrayList<>();
+        List<Task<Uri>> uploadTasks = new ArrayList<>();
+
+        // Generate a unique product ID
+        String productId = firestore.collection("products").document().getId();
+        product.setProductId(productId);
+
+        StorageReference storageRef = storage.getReference().child("product_images/" + productId);
+
+        for (int i = 0; i < imageUris.size(); i++) {
+            Uri imageUri = imageUris.get(i);
+            StorageReference imageRef = storageRef.child("image_" + i);
+            Task<Uri> uploadTask = imageRef.putFile(imageUri).continueWithTask(task -> {
+                if (!task.isSuccessful()) {
+                    throw task.getException();
+                }
+                return imageRef.getDownloadUrl();
+            });
+            uploadTasks.add(uploadTask);
+        }
+
+        // Wait for all image uploads to complete
+        Tasks.whenAllSuccess(uploadTasks).addOnSuccessListener(urls -> {
+            for (Object url : urls) {
+                downloadUrls.add(url.toString());
+            }
+            product.setImageUrls(downloadUrls);
+
+            // Save the complete product object to Firestore
+            firestore.collection("products").document(productId)
+                    .set(product)
+                    .addOnSuccessListener(aVoid -> {
+                        progressDialog.dismiss();
+                        Toast.makeText(AddProductActivity.this, "Product published successfully!", Toast.LENGTH_SHORT).show();
+                        finish(); // Close the activity
+                    })
+                    .addOnFailureListener(e -> {
+                        progressDialog.dismiss();
+                        Toast.makeText(AddProductActivity.this, "Error saving product data: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+        }).addOnFailureListener(e -> {
+            progressDialog.dismiss();
+            Toast.makeText(AddProductActivity.this, "Image upload failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        });
     }
 }
