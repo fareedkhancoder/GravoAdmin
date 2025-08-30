@@ -1,9 +1,9 @@
 package com.gravo.gravoadmin;
 
-import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.ServerTimestamp;
 import java.util.Date;
 import java.util.List;
+import java.util.Map; // <-- IMPORT THIS
 
 public class Product {
     private String productId;
@@ -21,6 +21,9 @@ public class Product {
     private boolean is_new;
     @ServerTimestamp
     private Date createdAt;
+
+    // --- NEW FIELD FOR SPECIFICATIONS ---
+    private Map<String, String> specifications;
 
     // Required empty public constructor for Firestore
     public Product() {}
@@ -55,4 +58,8 @@ public class Product {
     public void setIs_new(boolean is_new) { this.is_new = is_new; }
     public Date getCreatedAt() { return createdAt; }
     public void setCreatedAt(Date createdAt) { this.createdAt = createdAt; }
+
+    // --- GETTER AND SETTER FOR SPECIFICATIONS ---
+    public Map<String, String> getSpecifications() { return specifications; }
+    public void setSpecifications(Map<String, String> specifications) { this.specifications = specifications; }
 }

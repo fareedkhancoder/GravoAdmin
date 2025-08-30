@@ -185,18 +185,36 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="16dp">
-                    <TextView
-                        android:layout_width="wrap_content"
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Specifications"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"/>
-                    <TextView
-                        android:id="@+id/label_specifications_placeholder"
-                        android:layout_width="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Specifications"
+                            android:textAppearance="?attr/textAppearanceTitleMedium"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/button_add_specification"
+                            style="@style/Widget.Material3.Button.TextButton.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Add"
+                            app:icon="@drawable/ic_add" />
+                    </LinearLayout>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_specifications"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="Select a category to see specific fields like Size, Color, RAM, etc."
-                        android:textAppearance="?attr/textAppearanceBodyMedium"/>
+                        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -268,7 +286,8 @@
                                 android:id="@+id/input_cost_price"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:inputType="numberDecimal" />
+                                android:inputType="numberDecimal"
+                                android:imeOptions="actionNext" />
                         </com.google.android.material.textfield.TextInputLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
@@ -281,7 +300,8 @@
                                 android:id="@+id/input_stock_quantity"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:inputType="number" />
+                                android:inputType="number"
+                                android:imeOptions="actionNext" />
                         </com.google.android.material.textfield.TextInputLayout>
                     </LinearLayout>
                 </LinearLayout>
