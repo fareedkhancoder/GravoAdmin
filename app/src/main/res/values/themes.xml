@@ -6,4 +6,10 @@
     </style>
 
     <style name="Theme.GravoAdmin" parent="Base.Theme.GravoAdmin" />
+    <style name="Theme.MyApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <item name="android:statusBarColor">#FF0000</item>
+
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>

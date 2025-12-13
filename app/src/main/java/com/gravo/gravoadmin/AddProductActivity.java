@@ -385,7 +385,6 @@ public class AddProductActivity extends AppCompatActivity {
         List<Task<Uri>> uploadTasks = new ArrayList<>();
 
         String productId = firestore.collection("products").document().getId();
-        product.setProductId(productId);
 
         StorageReference storageRef = storage.getReference().child("product_images/" + productId);
 

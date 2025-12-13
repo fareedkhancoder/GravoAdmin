@@ -4,9 +4,10 @@ import com.google.firebase.firestore.ServerTimestamp;
 import java.util.Date;
 import java.util.List;
 import java.util.Map; // <-- IMPORT THIS
+import com.google.firebase.firestore.DocumentId;
 
 public class Product {
-    private String productId;
+    @DocumentId
     private String name;
     private String description;
     private String brand;
@@ -29,9 +30,6 @@ public class Product {
     public Product() {}
 
     // Getters and Setters for all fields...
-
-    public String getProductId() { return productId; }
-    public void setProductId(String productId) { this.productId = productId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
