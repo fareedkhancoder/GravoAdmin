@@ -17,7 +17,7 @@ public class OrderListActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_order_list); // Make sure this matches your XML name
+        setContentView(R.layout.activity_order_list);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
@@ -27,13 +27,15 @@ public class OrderListActivity extends AppCompatActivity {
         TabLayout tabLayout = findViewById(R.id.tabLayout);
         ViewPager2 viewPager = findViewById(R.id.viewPager);
 
-        // Set the adapter
-        ViewPagerAdapter adapter = new ViewPagerAdapter(this);
+        // 1. Get the filter BEFORE creating the adapter
+        String filterType = getIntent().getStringExtra("FILTER_TYPE");
+
+        // 2. Pass filterType to the Adapter Constructor
+        ViewPagerAdapter adapter = new ViewPagerAdapter(this, filterType);
+
         viewPager.setAdapter(adapter);
 
-        // Connect TabLayout and ViewPager
         new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
-            // Set the tab headers
             String[] titles = new String[]{
                     "Pending", "Processing", "Shipped", "Out for Delivery", "Delivered"
             };
