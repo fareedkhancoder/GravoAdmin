@@ -34,7 +34,7 @@ import androidx.annotation.Nullable;
 public class MainActivity extends AppCompatActivity {
 
     // --- UI Components ---
-    private ImageView btnAddProduct;
+    private ImageView btnAddProduct, draft;
     private TextView tvRevenue, tvTotalOrders, tvInvestment, tvInventory;
     private TextView badgeMorning, badgeAfternoon, badgeEvening;
     private TextView btnSeeAllMorning, btnSeeAllAfternoon, btnSeeAllEvening;
@@ -100,6 +100,12 @@ public class MainActivity extends AppCompatActivity {
         btnSeeAllMorning = findViewById(R.id.see_all_morning_orders_btn);
         btnSeeAllAfternoon = findViewById(R.id.see_all_afternoon_orders_btn);
         btnSeeAllEvening = findViewById(R.id.see_all_evening_orders_btn);
+        draft = findViewById(R.id.draft);
+        draft.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, Uploading.class);
+            startActivity(intent);
+
+        });
     }
 
     private void setupListeners() {

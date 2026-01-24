@@ -1,9 +1,15 @@
 package com.gravo.gravoadmin;
 
+import static android.content.ContentValues.TAG;
+
 import android.app.ProgressDialog;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -12,10 +18,14 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -30,7 +40,9 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
+import com.gravo.gravoadmin.Database.AppDatabase;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,13 +54,22 @@ import java.util.UUID;
 public class AddProductActivity extends AppCompatActivity {
 
     // --- MEMBER VARIABLES FOR PRODUCT IMAGES ---
+    // --- MEMBER VARIABLES FOR PRODUCT IMAGES ---
     private ProductImageAdapter imageAdapter;
     private List<Uri> imageUris;
+
+    // UPDATED: Changed from GetContent to GetMultipleContents
     private final ActivityResultLauncher<String> imagePickerLauncher =
-            registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
-                if (uri != null) {
-                    imageUris.add(uri);
-                    imageAdapter.notifyItemInserted(imageUris.size() - 1);
+            registerForActivityResult(new ActivityResultContracts.GetMultipleContents(), uris -> {
+                if (uris != null && !uris.isEmpty()) {
+                    // Calculate the position where new images will start
+                    int startPosition = imageUris.size();
+
+                    // Add all selected URIs to the list
+                    imageUris.addAll(uris);
+
+                    // Notify the adapter that a range of items was inserted
+                    imageAdapter.notifyItemRangeInserted(startPosition, uris.size());
                 }
             });
 
@@ -70,7 +91,7 @@ public class AddProductActivity extends AppCompatActivity {
     private TextInputEditText inputSellingPrice, inputDiscount, inputCostPrice, inputStockQuantity;
     private AutoCompleteTextView inputCategory;
     private MaterialSwitch switchIsNew;
-    private Button buttonPublish;
+    private Button buttonPublish, draft_button;
     private ProgressDialog progressDialog;
 
     // --- FIREBASE ---
@@ -87,7 +108,13 @@ public class AddProductActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_add_product);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
 
         // Setup Toolbar
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
@@ -128,6 +155,13 @@ public class AddProductActivity extends AppCompatActivity {
             specificationsList.add(new ManualSpecification());
             manualSpecAdapter.notifyItemInserted(specificationsList.size() - 1);
         });
+        if (getIntent().hasExtra("DRAFT_ID")) {
+            int draftId = getIntent().getIntExtra("DRAFT_ID", -1);
+
+            if (draftId != -1) {
+                loadDraftData(draftId);
+            }
+        }
     }
 
     private void initializeViews() {
@@ -143,6 +177,44 @@ public class AddProductActivity extends AppCompatActivity {
         inputStockQuantity = findViewById(R.id.input_stock_quantity);
         switchIsNew = findViewById(R.id.switch_is_new);
         buttonPublish = findViewById(R.id.button_publish);
+        draft_button = findViewById(R.id.button_save_draft);
+        draft_button.setVisibility(View.GONE);
+
+
+        inputProductName.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                // Not needed for this logic
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                // This triggers every time the user types or deletes a character
+                String input = s.toString().trim();
+
+                if (input.isEmpty()) {
+                    draft_button.setVisibility(View.GONE);
+                } else {
+                    draft_button.setVisibility(View.VISIBLE);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                // Not needed for this logic
+            }
+        });
+
+        draft_button.setOnClickListener(v -> {
+            String name = inputProductName.getText().toString().trim();
+            // Do your save draft logic here...
+            saveDraftToSQL();
+            Intent intent = new Intent(AddProductActivity.this, Uploading.class);
+            startActivity(intent);
+            Toast.makeText(this, "Draft Saved: " + name, Toast.LENGTH_SHORT).show();
+            finish();
+        });
+
 
         // Listener for category dropdown item selection
         inputCategory.setOnItemClickListener((parent, view, position, id) -> {
@@ -162,6 +234,65 @@ public class AddProductActivity extends AppCompatActivity {
         progressDialog.setTitle("Please Wait");
         progressDialog.setMessage("Working...");
         progressDialog.setCancelable(false);
+
+
+    }
+
+
+
+    private void loadDraftData(int draftId) {
+        // 1. Get the draft from the database
+        // Note: Database operations should strictly be async, but for a simple draft
+        // fetch on the UI thread, this is acceptable for small data.
+        Product draft = AppDatabase.getDatabase(this).draftDao().getDraftById(draftId);
+
+        if (draft == null) return;
+
+        // 2. Fill Simple Text Fields
+        inputProductName.setText(draft.getName());
+        inputDescription.setText(draft.getDescription());
+        inputBrand.setText(draft.getBrand());
+
+        // Convert numbers to string for EditTexts (handle 0.0 case if empty)
+        if (draft.getPrice() > 0) inputSellingPrice.setText(String.valueOf(draft.getPrice()));
+        if (draft.getCostPrice() > 0) inputCostPrice.setText(String.valueOf(draft.getCostPrice()));
+        if (draft.getStockQuantity() > 0) inputStockQuantity.setText(String.valueOf(draft.getStockQuantity()));
+        if (draft.getDiscountPercent() > 0) inputDiscount.setText(String.valueOf(draft.getDiscountPercent()));
+
+        // 3. Handle Category
+        // NOTE: Your database stores 'categoryId', but your input usually takes a Name.
+        // If you have a helper to get Name from ID, use it here. Otherwise:
+        inputCategory.setText(draft.getCategoryId());
+
+        // 4. Handle Boolean Toggles
+        switchIsNew.setChecked(draft.isIs_new());
+
+        // 5. Handle Tags (List<String> -> Comma separated string)
+        if (draft.getTags_lowercase() != null && !draft.getTags_lowercase().isEmpty()) {
+            String tagStr = String.join(", ", draft.getTags_lowercase()); // Requires API 26+
+            inputTags.setText(tagStr);
+        }
+
+        // --- 6. FIX: Load Specifications ---
+        if (draft.getSpecifications() != null && !draft.getSpecifications().isEmpty()) {
+            // CALL THE NEW FUNCTION WE CREATED IN STEP 1
+            manualSpecAdapter.setSpecificationsFromMap(draft.getSpecifications());
+        }
+
+        // 7. Handle Images (String Paths -> Uris)
+        if (draft.getImageUrls() != null && !draft.getImageUrls().isEmpty()) {
+            imageUris.clear(); // Clear existing
+            for (String path : draft.getImageUrls()) {
+                File imgFile = new File(path);
+                if (imgFile.exists()) {
+                    imageUris.add(Uri.fromFile(imgFile));
+                }
+            }
+            // Notify your images adapter
+            if (imageAdapter != null) {
+                imageAdapter.notifyDataSetChanged();
+            }
+        }
     }
 
     /**
@@ -358,6 +489,7 @@ public class AddProductActivity extends AppCompatActivity {
         product.setIs_new(switchIsNew.isChecked());
         product.setCategoryId(categoryId); // Use the ID for the product document
         product.setSellerId(FirebaseAuth.getInstance().getCurrentUser().getUid());
+        product.setClicks(0);
 
         String costPriceStr = inputCostPrice.getText().toString().trim();
         if (!TextUtils.isEmpty(costPriceStr)) {
@@ -378,6 +510,72 @@ public class AddProductActivity extends AppCompatActivity {
         product.setSpecifications(specifications);
 
         uploadImagesAndSaveProduct(product);
+    }
+    private void saveDraftToSQL() {
+        Product draft = new Product();
+
+        // 1. If editing an existing draft, keep the ID so it updates instead of creating new
+        if (getIntent().hasExtra("DRAFT_ID")) {
+            int draftId = getIntent().getIntExtra("DRAFT_ID", -1);
+            if (draftId != -1) {
+                draft.setDraftId(draftId);
+            }
+        }
+
+        // 2. Set Basic Fields
+        draft.setName(inputProductName.getText().toString());
+        draft.setBrand(inputBrand.getText().toString());
+        draft.setDescription(inputDescription.getText().toString());
+        draft.setCategoryId(inputCategory.getText().toString());
+        draft.setIs_new(switchIsNew.isChecked());
+
+        // Set Numbers (safely handle empty strings)
+        String price = inputSellingPrice.getText().toString();
+        if (!price.isEmpty()) draft.setPrice(Double.parseDouble(price));
+
+        String stock = inputStockQuantity.getText().toString();
+        if (!stock.isEmpty()) draft.setStockQuantity(Long.parseLong(stock));
+
+        String cost = inputCostPrice.getText().toString();
+        if (!cost.isEmpty()) draft.setCostPrice(Double.parseDouble(cost));
+
+        String discount = inputDiscount.getText().toString();
+        if (!discount.isEmpty()) draft.setDiscountPercent(Long.parseLong(discount));
+
+        // --- 3. NEW: SAVE TAGS ---
+        String tagsString = inputTags.getText().toString().trim().toLowerCase();
+        if (!tagsString.isEmpty()) {
+            // Split by comma (e.g., "watch, smart, red" -> ["watch", "smart", "red"])
+            List<String> tagsList = Arrays.asList(tagsString.split("\\s*,\\s*"));
+            draft.setTags_lowercase(tagsList);
+        }
+
+        // 4. Save Images (Your existing logic)
+        List<String> savedInternalImagePaths = new ArrayList<>();
+        if (imageUris != null && !imageUris.isEmpty()) {
+            for (Uri uri : imageUris) {
+                String path = saveImageToInternalStorage(uri);
+                if (path != null) savedInternalImagePaths.add(path);
+            }
+        }
+        draft.setImageUrls(savedInternalImagePaths);
+
+        // Firebase se current user ki ID nikaal kar save karein
+        if (FirebaseAuth.getInstance().getCurrentUser() != null) {
+            draft.setSellerId(FirebaseAuth.getInstance().getCurrentUser().getUid());
+        }
+
+        // --- NEW: ADD CREATED AT DATE ---
+        // Current time save karein
+        draft.setCreatedAt(new java.util.Date());
+
+        // 5. Save Specifications (Your existing logic)
+        draft.setSpecifications(manualSpecAdapter.getSpecificationsMap());
+
+        // 6. Insert/Update in Database
+        AppDatabase.getDatabase(this).draftDao().insertDraft(draft);
+
+        Toast.makeText(this, "Draft Saved!", Toast.LENGTH_SHORT).show();
     }
 
     private void uploadImagesAndSaveProduct(Product product) {
@@ -421,5 +619,34 @@ public class AddProductActivity extends AppCompatActivity {
             progressDialog.dismiss();
             Toast.makeText(AddProductActivity.this, "Image upload failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         });
+    }
+
+
+    // COPY THIS ENTIRE FUNCTION INTO AddProductActivity.java
+
+    private String saveImageToInternalStorage(android.net.Uri uri) {
+        try {
+            // 1. Get the bitmap from the Uri
+            android.graphics.Bitmap bitmap = android.provider.MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+
+            // 2. Create a unique filename (using timestamp ensures it is unique)
+            String filename = "draft_img_" + System.currentTimeMillis() + ".jpg";
+
+            // 3. Create the file in the app's private internal storage
+            java.io.File directory = getFilesDir(); // Private folder for this app
+            java.io.File file = new java.io.File(directory, filename);
+
+            // 4. Compress the bitmap and write it to the file
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 100, fos); // 100 = Max Quality
+            fos.close();
+
+            // 5. Return the absolute path (String) so we can save it in the database
+            return file.getAbsolutePath();
+
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
+            return null; // Return null if something went wrong
+        }
     }
 }

@@ -53,6 +53,25 @@ public class ManualSpecAdapter extends RecyclerView.Adapter<ManualSpecAdapter.Sp
                 .collect(Collectors.toMap(ManualSpecification::getName, ManualSpecification::getValue));
     }
 
+    // Add this method inside your ManualSpecAdapter class
+    public void setSpecificationsFromMap(Map<String, String> savedSpecs) {
+        if (savedSpecs == null || savedSpecs.isEmpty()) return;
+
+        // 1. Clear the current empty list
+        specList.clear();
+
+        // 2. Loop through the Map and convert back to ManualSpecification objects
+        for (Map.Entry<String, String> entry : savedSpecs.entrySet()) {
+            ManualSpecification spec = new ManualSpecification();
+            spec.setName(entry.getKey());
+            spec.setValue(entry.getValue());
+            specList.add(spec);
+        }
+
+        // 3. Refresh the UI
+        notifyDataSetChanged();
+    }
+
     class SpecViewHolder extends RecyclerView.ViewHolder {
         TextInputEditText inputSpecName, inputSpecValue;
         ImageButton buttonRemoveSpec;

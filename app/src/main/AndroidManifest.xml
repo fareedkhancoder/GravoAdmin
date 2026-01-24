@@ -12,6 +12,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.GravoAdmin">
         <activity
+            android:name=".Uploading"
+            android:exported="false" />
+        <activity
             android:name=".OrderListActivity"
             android:exported="false" />
 

@@ -34,6 +34,17 @@
                 android:textStyle="bold" />
 
             <ImageView
+                android:id="@+id/draft"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="Add Product"
+                android:focusable="true"
+                android:padding="4dp"
+                android:src="@drawable/outline_arrow_circle_up_24"
+                app:tint="@android:color/black" />
+            <ImageView
                 android:id="@+id/AddProduct"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
